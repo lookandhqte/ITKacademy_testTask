@@ -18,11 +18,15 @@ type Wallet struct {
 
 func GetWallet(db *sql.DB, walletId *uuid.UUID) (*Wallet, error) {
 	newWallet := &Wallet{}
-	err := db.QueryRow(`SELECT uuid, balance, currency, created_at FROM wallets WHERE uuid=$1`, walletId).Scan(&newWallet.UUID, &newWallet.Balance, &newWallet.Currency, &newWallet.CreatedAt)
+	err := db.QueryRow(`SELECT uuid, balance, currency, created_at FROM wallets WHERE uuid=$1`, walletId).Scan(
+		&newWallet.UUID, &newWallet.Balance, &newWallet.Currency, &newWallet.CreatedAt,
+	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
+			// Возвращаем ошибку с детальным сообщением, чтобы она соответствовала ожиданиям в тестах
 			return nil, fmt.Errorf("wallet not found")
 		}
+		// Добавляем более информативное сообщение об ошибке, если запрос не совпадает
 		return nil, fmt.Errorf("failed to get wallet: %w", err)
 	}
 	return newWallet, nil

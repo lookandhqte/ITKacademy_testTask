@@ -10,7 +10,7 @@ import (
 )
 
 func ConnectToDB() *sql.DB {
-	DBpassword, DBuser, DBname, HOST, PORT := os.Getenv("POSTGRES_password"), os.Getenv("POSTGRES_user"), os.Getenv("POSTGRES_db_name"), os.Getenv("HOST"), os.Getenv("PORT")
+	DBpassword, DBuser, DBname, HOST, PORT := os.Getenv("POSTGRES_PASSWORD"), os.Getenv("POSTGRES_USER"), os.Getenv("POSTGRES_DB_NAME"), os.Getenv("HOST"), os.Getenv("PORT")
 	//создаем ссылку для подключения к бд
 	DBlink := fmt.Sprintf("host=%s port=%s user=%s "+"password=%s dbname=%s sslmode=disable", HOST, PORT, DBuser, DBpassword, DBname)
 	//попытка открыть
