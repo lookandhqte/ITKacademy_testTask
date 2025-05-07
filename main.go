@@ -9,7 +9,6 @@ import (
 
 	"github.com/go-chi/chi"
 	"github.com/joho/godotenv"
-	_ "github.com/lib/pq"
 )
 
 func loadEnv() error {

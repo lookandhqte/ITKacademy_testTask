@@ -5,17 +5,14 @@ import (
 	"fmt"
 	"log"
 	"os"
-)
 
-const (
-	host = "localhost"
-	port = 5432
+	_ "github.com/lib/pq"
 )
 
 func ConnectToDB() *sql.DB {
-	DBpassword, DBuser, DBname := os.Getenv("POSTGRES_password"), os.Getenv("POSTGRES_user"), os.Getenv("POSTGRES_db_name")
+	DBpassword, DBuser, DBname, HOST, PORT := os.Getenv("POSTGRES_password"), os.Getenv("POSTGRES_user"), os.Getenv("POSTGRES_db_name"), os.Getenv("HOST"), os.Getenv("PORT")
 	//создаем ссылку для подключения к бд
-	DBlink := fmt.Sprintf("host=%s port=%d user=%s "+"password=%s dbname=%s sslmode=disable", host, port, DBuser, DBpassword, DBname)
+	DBlink := fmt.Sprintf("host=%s port=%s user=%s "+"password=%s dbname=%s sslmode=disable", HOST, PORT, DBuser, DBpassword, DBname)
 	//попытка открыть
 	db, err := sql.Open("postgres", DBlink)
 	if err != nil {
