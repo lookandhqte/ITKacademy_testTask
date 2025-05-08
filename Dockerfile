@@ -8,7 +8,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 # Копируем весь код
-COPY . .
+COPY . ./
 
 # Собираем приложение
 RUN CGO_ENABLED=0 GOOS=linux go build -o main .
@@ -19,10 +19,10 @@ FROM alpine:latest
 WORKDIR /app
 
 # Копируем собранное приложение из образа сборки
-COPY --from=builder /app/main .
+COPY --from=builder /app/main ./
 
 # Копируем файл с переменными окружения
-COPY config.env ./
+COPY config.env ./config.env
 
 # Устанавливаем необходимые пакеты для работы с PostgreSQL и bash
 RUN apk add --no-cache bash postgresql-client

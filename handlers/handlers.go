@@ -3,6 +3,7 @@ package handlers
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"test_task/requests"
@@ -44,13 +45,14 @@ func WalletOperationHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		walletId, err := uuid.Parse(chi.URLParam(r, "WALLET_UUID"))
 		if err != nil {
+			fmt.Println(walletId)
 			http.Error(w, "Invalid UUID format", http.StatusBadRequest)
 			return
 		}
 
 		var req WalletOperationRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			http.Error(w, "Invalid request body: "+err.Error(), http.StatusBadRequest)
 			return
 		}
 

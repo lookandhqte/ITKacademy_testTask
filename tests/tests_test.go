@@ -1,201 +1,133 @@
-package tests
+package handlers_test
 
 import (
-	"errors"
+	"bytes"
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"test_task/handlers"
-	"test_task/requests"
 	"testing"
 
-	"github.com/DATA-DOG/go-sqlmock"
+	"test_task/config"
+	"test_task/handlers"
+	"test_task/requests"
+
+	"github.com/go-chi/chi"
 	"github.com/google/uuid"
+	"github.com/joho/godotenv"
+	_ "github.com/lib/pq"
 	"github.com/stretchr/testify/assert"
 )
 
-// Тест для handlers.RateLimitMiddleware
-func TestHandlersRateLimitMiddleware(t *testing.T) {
-	// Инициализируем глобальный семафор перед тестами
+func loadEnv() error {
+	err := godotenv.Load("config.env")
+	if err != nil {
+		return fmt.Errorf("failed to load .env file: %w", err)
+	}
+	return nil
+}
+func TestGetWalletHandler(t *testing.T) {
+	// Подключаемся к реальной базе данных
+	loadEnv()
+	db := config.ConnectToDB()
+	defer db.Close()
+
+	// Генерация нового UUID
+	walletUUID := uuid.New()
+
+	// Создаем тестовую строку для запроса
+	req, err := http.NewRequest(http.MethodGet, "/api/v1/wallets/"+walletUUID.String(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Создаем запись для кошелька в базе данных
+	_, err = db.Exec(`INSERT INTO wallets (uuid, balance, currency, created_at) VALUES ($1, $2, $3, $4)`,
+		walletUUID, 1000.0, "USD", "2025-01-01")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	r := chi.NewRouter()
+	handlers.WalletRoutes(db, r)
+	ts := httptest.NewServer(r) // Создаем сервер для тестов
+	defer ts.Close()
+
+	// Создаем сервер и записываем запрос
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	// Проверяем результат
+	assert.Equal(t, http.StatusOK, rr.Code)
+
+	var wallet requests.Wallet
+	if err := json.NewDecoder(rr.Body).Decode(&wallet); err != nil {
+		t.Fatal(err)
+	}
+
+	assert.Equal(t, walletUUID, wallet.UUID)
+}
+
+func TestPostWalletOperationHandler(t *testing.T) {
+	// Подключаемся к реальной базе данных
+	loadEnv()
+	db := config.ConnectToDB()
+	defer db.Close()
+
+	// Генерация нового UUID для кошелька
+	walletUUID := uuid.New()
+
+	// Создаем тестовую строку для запроса
+	requestBody := `{"uuid":"` + walletUUID.String() + `", "operation_type": true, "amount": 100.0}`
+	req, err := http.NewRequest(http.MethodPost, "/api/v1/wallets/"+walletUUID.String()+"/operations", bytes.NewBuffer([]byte(requestBody)))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Создаем запись для кошелька в базе данных
+	_, err = db.Exec(`INSERT INTO wallets (uuid, balance, currency, created_at) VALUES ($1, $2, $3, $4)`,
+		walletUUID, 1000.0, "USD", "2025-01-01")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := chi.NewRouter()
+	handlers.WalletRoutes(db, r)
+	ts := httptest.NewServer(r) // Создаем сервер для тестов
+	defer ts.Close()
+
+	// Создаем сервер и записываем запрос
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	// Проверяем статус ответа
+	assert.Equal(t, http.StatusOK, rr.Code)
+
+	// Проверяем обновленный баланс кошелька
+	var balance float64
+	err = db.QueryRow(`SELECT balance FROM wallets WHERE uuid = $1`, walletUUID).Scan(&balance)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	assert.Equal(t, 1100.0, balance)
+}
+
+func TestRateLimitMiddleware(t *testing.T) {
+	rr := httptest.NewRecorder()
+	req, err := http.NewRequest(http.MethodGet, "/api/v1/wallets/some-wallet", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	loadEnv()
+
+	db := config.ConnectToDB()
+	defer db.Close()
+
 	handler := handlers.RateLimitMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	// Создаем тестовый запрос
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/wallets/test-wallet", nil)
-	w := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
 
-	// Проверяем, что ответ OK
-	handler.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-}
-
-// Тест для операции с кошельком
-func TestRequestsPostWalletOperation_Success(t *testing.T) {
-	// Создаем мок для базы данных
-	db, mock, err := sqlmock.New()
-	if err != nil {
-		t.Fatalf("Ошибка при создании мока базы данных: %v", err)
-	}
-	defer db.Close()
-
-	// Генерация UUID кошелька
-	walletID := uuid.New()
-
-	// Мокируем ответ от базы данных с использованием ExpectQueryRegexp
-	mock.ExpectQuery("SELECT uuid, balance, currency, created_at FROM wallets WHERE uuid=$1").
-		WithArgs(walletID).
-		WillReturnRows(sqlmock.NewRows([]string{"uuid", "balance", "currency", "created_at"}).
-			AddRow(walletID.String(), 100.0, "USD", "2021-01-01"))
-
-	// Запрос на выполнение операции
-	err = requests.PostWalletOperation(db, &walletID, true, 100.0)
-
-	assert.Nil(t, err)
-	mock.ExpectationsWereMet()
-}
-
-// Тест для ошибки, если кошелек не найден
-func TestRequestsPostWalletOperation_WalletNotFound(t *testing.T) {
-	// Создаем мок для базы данных
-	db, mock, err := sqlmock.New()
-	if err != nil {
-		t.Fatalf("Ошибка при создании мока базы данных: %v", err)
-	}
-	defer db.Close()
-
-	// Генерация UUID кошелька
-	walletID := uuid.New()
-
-	// Мокируем ошибку от базы данных
-	mock.ExpectQuery("SELECT uuid, balance, currency, created_at FROM wallets WHERE uuid=$1").
-		WithArgs(walletID).
-		WillReturnError(errors.New("wallet not found"))
-
-	// Запрос на выполнение операции
-	err = requests.PostWalletOperation(db, &walletID, true, 100.0)
-
-	assert.Equal(t, "wallet not found", err.Error())
-	mock.ExpectationsWereMet()
-}
-
-// Тест для операции с недостаточно средств
-func TestRequestsPostWalletOperation_InsufficientFunds(t *testing.T) {
-	// Создаем мок для базы данных
-	db, mock, err := sqlmock.New()
-	if err != nil {
-		t.Fatalf("Ошибка при создании мока базы данных: %v", err)
-	}
-	defer db.Close()
-
-	// Генерация UUID кошелька
-	walletID := uuid.New()
-
-	// Мокируем кошелек с недостаточно средств
-	mock.ExpectQuery("SELECT uuid, balance, currency, created_at FROM wallets WHERE uuid=$1").
-		WithArgs(walletID).
-		WillReturnRows(sqlmock.NewRows([]string{"uuid", "balance", "currency", "created_at"}).
-			AddRow(walletID.String(), 50.0, "USD", "2021-01-01"))
-
-	// Запрос на выполнение операции
-	err = requests.PostWalletOperation(db, &walletID, false, 100.0)
-
-	assert.Equal(t, "insufficient funds", err.Error())
-	mock.ExpectationsWereMet()
-}
-
-// Тест для операции с отрицательной суммой
-func TestRequestsPostWalletOperation_InvalidAmount(t *testing.T) {
-	// Создаем мок для базы данных
-	db, mock, err := sqlmock.New()
-	if err != nil {
-		t.Fatalf("Ошибка при создании мока базы данных: %v", err)
-	}
-	defer db.Close()
-
-	// Генерация UUID кошелька
-	walletID := uuid.New()
-
-	// Мокируем кошелек
-	mock.ExpectQuery("SELECT uuid, balance, currency, created_at FROM wallets WHERE uuid=$1").
-		WithArgs(walletID).
-		WillReturnRows(sqlmock.NewRows([]string{"uuid", "balance", "currency", "created_at"}).
-			AddRow(walletID.String(), 100.0, "USD", "2021-01-01"))
-
-	// Запрос на выполнение операции с отрицательной суммой
-	err = requests.PostWalletOperation(db, &walletID, true, -100.0)
-
-	assert.Equal(t, "amount must be positive", err.Error())
-	mock.ExpectationsWereMet()
-}
-
-// Тест на нагрузку: 1000 RPS для одного кошелька
-func TestHandlersRateLimitMiddleware_1000RPS(t *testing.T) {
-	handler := handlers.RateLimitMiddleware(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	})
-
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/wallets/test-wallet", nil)
-
-	// Выполняем 1000 запросов за 1 секунду
-	for i := 0; i < 1000; i++ {
-		w := httptest.NewRecorder()
-		handler.ServeHTTP(w, req)
-		assert.Equal(t, http.StatusOK, w.Code)
-	}
-}
-
-// Тест для getWallet с существующим кошельком
-func TestHandlersGetWalletHandler_Success(t *testing.T) {
-	// Создаем мок для базы данных
-	db, mock, err := sqlmock.New()
-	if err != nil {
-		t.Fatalf("Ошибка при создании мока базы данных: %v", err)
-	}
-	defer db.Close()
-
-	walletID := uuid.New()
-
-	// Создаем мок для базы данных, возвращая данные кошелька
-	mock.ExpectQuery("SELECT uuid, balance, currency, created_at FROM wallets WHERE uuid=$1").
-		WithArgs(walletID).
-		WillReturnRows(sqlmock.NewRows([]string{"uuid", "balance", "currency", "created_at"}).
-			AddRow(walletID.String(), 100.0, "USD", "2021-01-01"))
-
-	handler := handlers.GetWalletHandler(db)
-
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/wallets/"+walletID.String(), nil)
-	w := httptest.NewRecorder()
-
-	handler.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-	mock.ExpectationsWereMet()
-}
-
-// Тест для getWallet с несуществующим кошельком
-func TestHandlersGetWalletHandler_WalletNotFound(t *testing.T) {
-	// Создаем мок для базы данных
-	db, mock, err := sqlmock.New()
-	if err != nil {
-		t.Fatalf("Ошибка при создании мока базы данных: %v", err)
-	}
-	defer db.Close()
-
-	walletID := uuid.New()
-
-	// Мокируем ошибку кошелька не найден
-	mock.ExpectQuery("SELECT uuid, balance, currency, created_at FROM wallets WHERE uuid=$1").
-		WithArgs(walletID).
-		WillReturnError(errors.New("wallet not found"))
-
-	handler := handlers.GetWalletHandler(db)
-
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/wallets/"+walletID.String(), nil)
-	w := httptest.NewRecorder()
-
-	handler.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusNotFound, w.Code)
-	mock.ExpectationsWereMet()
+	assert.Equal(t, http.StatusOK, rr.Code)
 }

@@ -24,10 +24,10 @@ func GetWallet(db *sql.DB, walletId *uuid.UUID) (*Wallet, error) {
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			// Возвращаем ошибку с детальным сообщением, чтобы она соответствовала ожиданиям в тестах
-			return nil, fmt.Errorf("wallet not found")
+			return nil, err
 		}
 		// Добавляем более информативное сообщение об ошибке, если запрос не совпадает
-		return nil, fmt.Errorf("failed to get wallet: %w", err)
+		return nil, err
 	}
 	return newWallet, nil
 }
