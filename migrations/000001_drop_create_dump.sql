@@ -11,6 +11,6 @@ TRUNCATE TABLE wallets;
 INSERT INTO wallets (uuid, balance, currency, created_at) VALUES
     (gen_random_uuid(), 0.00, 'USD', now() - interval '5 days'),
     (gen_random_uuid(), 10.25, 'EUR', now() - interval '4 days'),
-    (gen_random_uuid(), 50.81, 'GBP', now() - interval '3 days'),
+    ('e3e0fde1-a2d9-4953-8898-5bb6f5ea1bab', 50.81, 'GBP', now() - interval '3 days'),
     (gen_random_uuid(), 176.21, 'USD', now() - interval '2 days'),
     (gen_random_uuid(), 82939.32, 'JPY', now() - interval '1 day');
