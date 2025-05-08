@@ -20,7 +20,7 @@ import (
 )
 
 func loadEnv() error {
-	err := godotenv.Load("config.env")
+	err := godotenv.Load("test.env")
 	if err != nil {
 		return fmt.Errorf("failed to load .env file: %w", err)
 	}
